@@ -1,5 +1,6 @@
 #!/usr/local/bin/python3
 # coding=UTF-8
+import traceback
 
 import openpyxl
 import re
@@ -10,7 +11,7 @@ from selenium.webdriver import Keys
 from selenium.webdriver.common.action_chains import ActionChains
 
 
-g_test_batch = 2
+g_test_batch = 100
 
 # 1. query data base on the db index
 cx = sqlite3.connect('./result/operations.db')
@@ -19,12 +20,29 @@ cx.execute("create table if not exists qcc_firm_detail (id INTEGER PRIMARY KEY a
     qccname TEXT, qccstatus TEXT, qcctags TEXT, qccused TEXT, qccnewtags TEXT, qcctel TEXT, qccoffweb TEXT, qccemail TEXT, qccadd TEXT)")
 cur = cx.cursor()
 
-cur.execute("select count(*) from qcc_firm_detail")
-g_skip_rows = cur.fetchall()[0][0]
-print(g_skip_rows)
+cur.execute("select count(*) from qcc_firm_idx")
+g_total = cur.fetchall()[0][0]
+print(g_total)
 
-cur.execute("select * from qcc_firm_idx limit " + str(g_test_batch) + " offset " + str(g_skip_rows))
-indeices = cur.fetchall()
+# cur.execute("select count(*) from qcc_firm_detail")
+# g_skip_rows = cur.fetchall()[0][0]
+# print(g_skip_rows)
+#
+# cur.execute("select * from qcc_firm_idx limit " + str(g_test_batch) + " offset " + str(g_skip_rows))
+# indeices = cur.fetchall()
+
+
+def queryBatchData():
+    cur.execute("select count(*) from qcc_firm_detail")
+    g_skip_rows = cur.fetchall()[0][0]
+    print(g_skip_rows)
+
+    if g_skip_rows < g_total:
+        cur.execute("select * from qcc_firm_idx limit " + str(g_test_batch) + " offset " + str(g_skip_rows))
+        indeices = cur.fetchall()
+
+    return indeices
+
 
 
 def switch2Window(driver, handle):
@@ -55,7 +73,7 @@ def searchOneByName(driver, name):
     else:
         return False
 
-def queryOneDetail(driver):
+def queryOneDetail(driver, count):
     tmp_result = {}
 
     # company title
@@ -123,49 +141,58 @@ def error2DB(id, name):
     cx.commit()
 
 
-count = 0
-driver = None
-handle = None
-retry_count = 0
-while count < len(indeices):
-    try:
-        idx = indeices[count]
-        t_pha_id = idx[1]
-        t_pha_name = idx[2]
-        t_qcc_url = idx[3]
-        print(t_qcc_url)
+def scraperData(indeices):
+    count = 0
+    driver = None
+    handle = None
+    retry_count = 0
+    while count < len(indeices):
+        try:
+            idx = indeices[count]
+            t_pha_id = idx[1]
+            t_pha_name = idx[2]
+            t_qcc_url = idx[3]
+            print(t_qcc_url)
 
-        if driver is None:
-            driver = webdriver.Chrome(executable_path='lib/chromedriver')
-            driver.implicitly_wait(10)     # seconds
-            driver.get("https://www.qcc.com")
-            handle = driver.current_window_handle
+            if driver is None:
+                driver = webdriver.Chrome(executable_path='lib/chromedriver')
+                driver.implicitly_wait(10)     # seconds
+                driver.get("https://www.qcc.com")
+                handle = driver.current_window_handle
 
-        if searchOneByName(driver, name=t_pha_name):
-            switch2Window(driver, handle)
-            result = queryOneDetail(driver)
-            switchBack(driver, handle)
-            result2DB(t_pha_id, t_pha_name, result)
-            driver.back()
-        else:
-            driver.back()
+            if searchOneByName(driver, name=t_pha_name):
+                switch2Window(driver, handle)
+                result = queryOneDetail(driver, count)
+                switchBack(driver, handle)
+                result2DB(t_pha_id, t_pha_name, result)
+                driver.back()
+            else:
+                driver.back()
 
-        count = count + 1
+            count = count + 1
 
-        if count % 20 == 19:
+            if count % 20 == 19:
+                driver.quit()
+                driver = None
+                handle = None
+
+        except Exception as e:
+            print(traceback.format_exc())
             driver.quit()
             driver = None
             handle = None
+            retry_count = retry_count + 1
+            if retry_count > 3:
+                error2DB(t_pha_id, t_pha_name)
+                count = count + 1
+            continue
 
-    except Exception as e:
+    if driver is not None:
         driver.quit()
-        driver = None
-        handle = None
-        retry_count = retry_count + 1
-        if retry_count > 3:
-            error2DB(t_pha_id, t_pha_name)
-            count = count + 1
-        continue
 
-if driver is not None:
-    driver.quit()
+
+while 1:
+    indeices = queryBatchData()
+    scraperData(indeices)
+
+
