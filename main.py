@@ -7,15 +7,16 @@ import datetime
 import sqlite3
 from selenium import webdriver
 from selenium.webdriver import Keys
+from selenium.webdriver.common.action_chains import ActionChains
 
 
-g_test_batch = 100
+g_test_batch = 2
 
 # 1. query data base on the db index
 cx = sqlite3.connect('./result/operations.db')
 cx.execute("create table if not exists qcc_firm_idx (id INTEGER PRIMARY KEY autoincrement, phaid TEXT, phaname TEXT, qccdetailhref TEXT)")
 cx.execute("create table if not exists qcc_firm_detail (id INTEGER PRIMARY KEY autoincrement, phaid TEXT, phaname TEXT, \
-    qcctp TEXT, qcctag TEXT, qccboss TEXT, qccphone TEXT, qcccode TEXT, qccoffweb TEXT, qccemail TEXT, qccadd TEXT)")
+    qccname TEXT, qccstatus TEXT, qcctags TEXT, qccused TEXT, qccnewtags TEXT, qcctel TEXT, qccoffweb TEXT, qccemail TEXT, qccadd TEXT)")
 cur = cx.cursor()
 
 cur.execute("select count(*) from qcc_firm_detail")
@@ -56,12 +57,30 @@ def searchOneByName(driver, name):
 
 def queryOneDetail(driver):
     tmp_result = {}
+
     # company title
     title_elems = driver.find_elements_by_xpath('//div[contains(@class,"title")]/div/span/h1[1]')
     tmp_result['qccname'] = title_elems = title_elems[0].text
+
+    # company status
+    status_elems = driver.find_elements_by_xpath('//div[contains(@class,"title")]/div/span/span[1]')
+    tmp_result['qccstatus'] = ('无' if len(status_elems) == 0 else status_elems[0].text)
+
     # company tags
+    tmp_result['qcctags'] = []
+    tmp_result['qccused'] = ""
     company_tags = driver.find_elements_by_xpath('//div[contains(@class,"tags")]/span[contains(@class, "text-primary")]')
-    tmp_result['qcctags'] = ','.join(list(map(lambda x: x.text, company_tags)))
+    for tag in company_tags:
+        if tag.text == '曾用名':
+            hover = ActionChains(driver).move_to_element(tag)
+            hover.perform()   #悬停
+            company_used_names = driver.find_elements_by_xpath('//div[contains(@class,"tags")]/span[contains(@class, "text-primary")]/div')
+            tmp_result['qccused'] = ','.join(list(map(lambda x: x.text, company_used_names))).replace('\n', '')
+        else:
+            tmp_result['qcctags'].append(tag.text)
+
+    tmp_result['qcctags'] = ','.join(tmp_result['qcctags'])
+
     # company district
     company_address_tags = driver.find_elements_by_xpath('//div[contains(@class,"newtags")]')
     tmp_result['qccnewtags'] = ','.join(list(map(lambda x: x.text, company_address_tags)))
@@ -86,6 +105,24 @@ def queryOneDetail(driver):
     print("{}. {}".format(count, tmp_result))
     return tmp_result
 
+def result2DB(id, name, d):
+    sql = "insert into qcc_firm_detail (phaid, phaname, qccname , qccstatus , qcctags , qccused , qccnewtags , qcctel , " \
+          "qccoffweb, qccemail, qccadd) VALUES ('{}', '{}', '{}', '{}', '{}', '{}','{}', '{}', '{}', '{}', '{}')" \
+            .format(id, name, d['qccname'], d['qccstatus'], d['qcctags'], d['qccused'], d['qccnewtags'], \
+                    d['qcctel'], d['qccoffweb'], d['qccemail'], d['qccadd'])
+    print(sql)
+    cur.execute(sql)
+    cx.commit()
+
+def error2DB(id, name):
+    sql = "insert into qcc_firm_detail (phaid, phaname, qccname , qccstatus , qcctags , qccused , qccnewtags , qcctel , " \
+          "qccoffweb, qccemail, qccadd) VALUES ('{}', '{}', '{}', '{}', '{}', '{}','{}', '{}', '{}', '{}', '{}')" \
+        .format(id, name, '', '', '', '', '', '', '', '', '')
+    print(sql)
+    cur.execute(sql)
+    cx.commit()
+
+
 count = 0
 driver = None
 handle = None
@@ -106,8 +143,9 @@ while count < len(indeices):
 
         if searchOneByName(driver, name=t_pha_name):
             switch2Window(driver, handle)
-            queryOneDetail(driver)
+            result = queryOneDetail(driver)
             switchBack(driver, handle)
+            result2DB(t_pha_id, t_pha_name, result)
             driver.back()
         else:
             driver.back()
@@ -120,18 +158,14 @@ while count < len(indeices):
             handle = None
 
     except Exception as e:
-        print(e)
         driver.quit()
         driver = None
         handle = None
         retry_count = retry_count + 1
         if retry_count > 3:
-            print(t_pha_id)
-            print(t_pha_name)
-            print('something wrong, skip this one')
+            error2DB(t_pha_id, t_pha_name)
             count = count + 1
         continue
 
 if driver is not None:
-    # driver.quit()
-    pass
+    driver.quit()
