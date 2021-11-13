@@ -25,12 +25,36 @@ print(g_skip_rows)
 cur.execute("select * from qcc_firm_idx limit " + str(g_test_batch) + " offset " + str(g_skip_rows))
 indeices = cur.fetchall()
 
-def searchOneByName(driver):
-    pass
+
+def switch2Window(driver, handle):
+    for newhandle in driver.window_handles:
+        if newhandle != handle:
+            driver.switch_to.window(newhandle)
+
+
+def switchBack(driver, handle):
+    for newhandle in driver.window_handles:
+        if newhandle != handle:
+            driver.switch_to.window(newhandle)
+            driver.close()
+
+    driver.switch_to.window(handle)
+
+def searchOneByName(driver, name):
+    element = driver.find_element_by_id('searchkey')
+    element.send_keys(name)
+    element.send_keys(Keys.ENTER)
+
+    elems = driver.find_elements_by_xpath('//div[contains(@class,"maininfo")]/a[1]')
+    # 只取第一个
+    detail_href = ''
+    if len(elems) > 0:
+        elems[0].click()
+        return True
+    else:
+        return False
 
 def queryOneDetail(driver):
-    driver.get(t_qcc_url)
-
     tmp_result = {}
     # company title
     title_elems = driver.find_elements_by_xpath('//div[contains(@class,"title")]/div/span/h1[1]')
@@ -59,11 +83,12 @@ def queryOneDetail(driver):
             print('loss message')
             print(tmp)
 
-    # TODO: to database
     print("{}. {}".format(count, tmp_result))
+    return tmp_result
 
 count = 0
 driver = None
+handle = None
 retry_count = 0
 while count < len(indeices):
     try:
@@ -77,13 +102,34 @@ while count < len(indeices):
             driver = webdriver.Chrome(executable_path='lib/chromedriver')
             driver.implicitly_wait(10)     # seconds
             driver.get("https://www.qcc.com")
+            handle = driver.current_window_handle
 
-        queryOneDetail(driver)
+        if searchOneByName(driver, name=t_pha_name):
+            switch2Window(driver, handle)
+            queryOneDetail(driver)
+            switchBack(driver, handle)
+            driver.back()
+        else:
+            driver.back()
+
         count = count + 1
 
+        if count % 20 == 19:
+            driver.quit()
+            driver = None
+            handle = None
+
     except Exception as e:
+        print(e)
         driver.quit()
         driver = None
+        handle = None
+        retry_count = retry_count + 1
+        if retry_count > 3:
+            print(t_pha_id)
+            print(t_pha_name)
+            print('something wrong, skip this one')
+            count = count + 1
         continue
 
 if driver is not None:
