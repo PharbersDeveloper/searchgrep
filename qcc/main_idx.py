@@ -105,6 +105,5 @@ for row in rows:
         driver.quit()
         driver = None
 
-
 if driver is None:
     driver.quit()
