@@ -24,13 +24,6 @@ cur.execute("select count(*) from qcc_firm_idx")
 g_total = cur.fetchall()[0][0]
 print(g_total)
 
-# cur.execute("select count(*) from qcc_firm_detail")
-# g_skip_rows = cur.fetchall()[0][0]
-# print(g_skip_rows)
-#
-# cur.execute("select * from qcc_firm_idx limit " + str(g_test_batch) + " offset " + str(g_skip_rows))
-# indeices = cur.fetchall()
-
 
 def queryBatchData():
     cur.execute("select count(*) from qcc_firm_detail")
@@ -42,7 +35,6 @@ def queryBatchData():
         indeices = cur.fetchall()
 
     return indeices
-
 
 
 def switch2Window(driver, handle):
@@ -92,8 +84,13 @@ def queryOneDetail(driver, count):
         if tag.text == '曾用名':
             hover = ActionChains(driver).move_to_element(tag)
             hover.perform()   #悬停
-            company_used_names = driver.find_elements_by_xpath('//div[contains(@class,"tags")]/span[contains(@class, "text-primary")]/div')
-            tmp_result['qccused'] = ','.join(list(map(lambda x: x.text, company_used_names))).replace('\n', '')
+            company_used_names = driver.find_elements_by_xpath('//div[contains(@class,"tags")]/span[contains(@class, "text-primary")]/div/div/div/div/div[contains(@class, "ant-popover-inner")]/div/div/span')
+            # tmp_result['qccused'] = ','.join(list(map(lambda x: x.text, company_used_names))).replace('\n', '')
+            if len(company_used_names) > 0:
+                company_used_names = company_used_names[0].get_attribute('innerHTML')
+                tmp_result['qccused'] = company_used_names
+            else:
+                tmp_result['qccused'] = ''
         else:
             tmp_result['qcctags'].append(tag.text)
 
