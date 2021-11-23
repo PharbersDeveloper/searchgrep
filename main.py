@@ -52,7 +52,8 @@ def switchBack(driver, handle):
     driver.switch_to.window(handle)
 
 def searchOneByName(driver, name):
-    element = driver.find_element_by_id('searchkey')
+    # element = driver.find_element_by_id('searchkey')
+    element = driver.find_element_by_id('searchKey')
     element.send_keys(name)
     element.send_keys(Keys.ENTER)
 
@@ -155,6 +156,7 @@ def scraperData(indeices):
                 driver = webdriver.Chrome(executable_path='lib/chromedriver')
                 driver.implicitly_wait(10)     # seconds
                 driver.get("https://www.qcc.com")
+                driver.refresh()
                 handle = driver.current_window_handle
 
             if searchOneByName(driver, name=t_pha_name):
